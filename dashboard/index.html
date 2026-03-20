@@ -188,6 +188,42 @@
       padding: 40px;
       font-size: 14px;
     }
+    .feedback-box {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+    }
+    .feedback-box label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+    .feedback-box textarea {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 14px;
+      font-family: inherit;
+      padding: 12px;
+      resize: vertical;
+      min-height: 80px;
+      margin-bottom: 10px;
+      outline: none;
+    }
+    .feedback-box textarea:focus {
+      border-color: var(--accent);
+    }
+    .article-title {
+      font-size: 22px;
+      font-weight: 700;
+      line-height: 1.3;
+      margin-bottom: 16px;
+      color: var(--text);
+    }
     .spinner {
       display: inline-block;
       width: 16px; height: 16px;
@@ -238,6 +274,14 @@
       <h2>Draft Article</h2>
       <div class="word-count" id="draft-word-count"></div>
       <div id="draft-content" class="article-preview"></div>
+
+      <!-- Feedback + regenerate -->
+      <div class="feedback-box">
+        <label for="feedback-input">Suggest changes or give feedback</label>
+        <textarea id="feedback-input" placeholder="e.g. Make the opening more direct. Add a concrete example in section 2. Remove the part about negotiation tactics."></textarea>
+        <button class="btn btn-primary" id="regenerate-btn" onclick="regenerate()">Regenerate with Feedback</button>
+      </div>
+
       <div class="action-row">
         <button class="btn btn-green" onclick="approve()">Approve &amp; Publish</button>
         <button class="btn btn-red" onclick="reject()">Reject — Pick Different Topic</button>
@@ -320,6 +364,8 @@
       if (stage === 'awaiting_approval' && status.draft_article) {
         draftPanel.classList.remove('hidden');
         renderDraft(status.draft_article);
+        const rBtn = document.getElementById('regenerate-btn');
+        if (rBtn) { rBtn.disabled = false; rBtn.textContent = 'Regenerate with Feedback'; }
       } else {
         draftPanel.classList.add('hidden');
       }
@@ -356,6 +402,7 @@
       `).join('');
 
       document.getElementById('draft-content').innerHTML = `
+        <div class="article-title">${esc(article.title || '')}</div>
         <div class="hook">${esc(article.hook || '')}</div>
         ${sections}
         ${article.takeaway ? `<div class="takeaway">${esc(article.takeaway)}</div>` : ''}
@@ -374,6 +421,23 @@
       const btn = event.target;
       btn.disabled = true;
       await fetch('/approve', {method: 'POST'});
+    }
+
+    async function regenerate() {
+      const feedback = document.getElementById('feedback-input').value.trim();
+      if (!feedback) {
+        alert('Please enter your feedback before regenerating.');
+        return;
+      }
+      const btn = document.getElementById('regenerate-btn');
+      btn.disabled = true;
+      btn.textContent = 'Regenerating...';
+      await fetch('/regenerate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({feedback}),
+      });
+      document.getElementById('feedback-input').value = '';
     }
 
     async function reject() {

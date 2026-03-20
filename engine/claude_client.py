@@ -92,7 +92,8 @@ def extract_themes(
 
     system = (
         "You are a product management thought leader and editor. "
-        "You help identify compelling article topics based on what's being discussed in the PM community. "
+        "You identify compelling article topics for a broad PM audience: senior PMs, aspiring PMs, and founders. "
+        "Topics should be strategic, analytical, and grounded in real practice — in the style of Lenny's Newsletter meets Melissa Perri. "
         "Always respond with valid JSON only — no markdown, no explanation."
     )
 
@@ -158,8 +159,13 @@ def write_article(topic: dict, episodes: list[dict]) -> dict | None:
 
     system = (
         "You are an expert product management writer. "
-        "You write clear, insightful, practical articles for product managers. "
-        "Your writing is direct, uses concrete examples, and avoids buzzwords. "
+        "Your audience is broad: senior PMs, aspiring PMs, and founders. "
+        "Your voice is leadership-oriented and analytical — strategic thinking combined with clear, practical frameworks. "
+        "Write in the style of Lenny's Newsletter meets Melissa Perri: direct, opinionated but not preachy, "
+        "framework-driven without being academic, and always grounded in real-world practice. "
+        "Use third person as the default. Only use first person ('I') when sharing a specific concrete example. "
+        "Avoid buzzwords, filler phrases, and vague generalisations. Every sentence should earn its place. "
+        "Never use em dashes (—) or en dashes (–) anywhere in the article. Write out full sentences instead. "
         "Always respond with valid JSON only — no markdown, no explanation outside the JSON."
     )
 
@@ -174,10 +180,13 @@ SOURCE EPISODES FOR INSPIRATION:
 
 Requirements:
 - Total length: 700-850 words
-- Practical and actionable
-- 3-4 body sections with clear headings
-- No fluff, no buzzwords
-- Written for working product managers
+- Strategic and analytical, but immediately actionable
+- 3-4 body sections with clear, specific headings (not generic like "Introduction")
+- No fluff, no buzzwords, no vague generalisations
+- Third person default; first person only for a specific concrete example
+- Written for senior PMs, aspiring PMs, and founders equally
+- Style: Lenny's Newsletter meets Melissa Perri: clear, direct, framework-driven
+- Never use em dashes (—) or en dashes (–). Write out full sentences instead.
 
 Return a JSON object with:
 - title: string — final article title (can refine from topic brief)
@@ -214,4 +223,59 @@ Example format:
         return article
     except (json.JSONDecodeError, ValueError) as e:
         print(f"[FAIL] Could not parse article JSON: {e}\nRaw response: {raw[:500]}")
+        return None
+
+
+def revise_article(existing_article: dict, feedback: str, topic: dict, episodes: list[dict]) -> dict | None:
+    """
+    Revise an existing article based on user feedback.
+    Returns a new article dict with the same structure.
+    """
+    settings = _load_settings()
+    model = settings.get('claude_model', 'claude-sonnet-4-6')
+
+    import json as _json
+    existing_text = _json.dumps(existing_article, indent=2)
+
+    system = (
+        "You are an expert product management writer. "
+        "Your audience is broad: senior PMs, aspiring PMs, and founders. "
+        "Your voice is leadership-oriented and analytical — strategic thinking combined with clear, practical frameworks. "
+        "Write in the style of Lenny's Newsletter meets Melissa Perri: direct, opinionated but not preachy, "
+        "framework-driven without being academic, and always grounded in real-world practice. "
+        "Use third person as the default. Only use first person ('I') when sharing a specific concrete example. "
+        "Avoid buzzwords, filler phrases, and vague generalisations. Every sentence should earn its place. "
+        "Never use em dashes (—) or en dashes (–). Write out full sentences instead. "
+        "Always respond with valid JSON only — no markdown, no explanation outside the JSON."
+    )
+
+    prompt = f"""Revise the following product management article based on the feedback provided.
+
+FEEDBACK FROM AUTHOR:
+{feedback}
+
+CURRENT ARTICLE (JSON):
+{existing_text}
+
+Apply the feedback carefully. Keep what is working. Fix what the author flagged.
+Maintain the same JSON structure and all the same style rules as the original.
+Never use em dashes or en dashes. Write out full sentences instead.
+
+Return the revised article as a JSON object with the same fields:
+title, hook, sections (array of heading+body), takeaway, word_count."""
+
+    raw = _call_claude(
+        messages=[{"role": "user", "content": prompt}],
+        system=system,
+        model=model,
+        max_tokens=3000,
+    )
+
+    try:
+        cleaned = _strip_code_fences(raw)
+        article = json.loads(cleaned)
+        article['generated_at'] = datetime.now(timezone.utc).isoformat()
+        return article
+    except (json.JSONDecodeError, ValueError) as e:
+        print(f"[FAIL] Could not parse revised article JSON: {e}\nRaw response: {raw[:500]}")
         return None

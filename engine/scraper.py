@@ -1,51 +1,74 @@
 """
-Scrape Lenny's Podcast and Melissa Perri's Product Thinking episodes.
-Uses CSS selectors from config/sources.json.
+Scrape Lenny's Podcast and Melissa Perri's Product Thinking via RSS feeds.
+RSS is reliable, fast, and doesn't require CSS selectors or JS rendering.
 """
 
-import json
 import os
 import sys
 import re
 from datetime import datetime, timezone, timedelta
+from xml.etree import ElementTree as ET
+from html.parser import HTMLParser
 
 try:
     import requests
-    from bs4 import BeautifulSoup
 except ImportError:
-    print("[ERROR] Missing dependencies. Run: pip3 install requests beautifulsoup4")
+    print("[ERROR] Missing dependency. Run: pip3 install requests")
     sys.exit(1)
 
-SOURCES_PATH = os.path.join(os.path.dirname(__file__), '..', 'config', 'sources.json')
+SOURCES = [
+    {
+        "id": "lennys_podcast",
+        "name": "Lenny's Podcast",
+        "rss": "https://www.lennysnewsletter.com/feed",
+        "enabled": True,
+    },
+    {
+        "id": "product_thinking",
+        "name": "Product Thinking (Melissa Perri)",
+        "rss": "https://anchor.fm/s/ff7e9014/podcast/rss",
+        "enabled": True,
+    },
+]
 
-HEADERS = {
-    'User-Agent': (
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
-        'AppleWebKit/537.36 (KHTML, like Gecko) '
-        'Chrome/120.0.0.0 Safari/537.36'
-    )
-}
+HEADERS = {"User-Agent": "articles-pipeline/1.0"}
 
 
-def _load_sources() -> list:
-    with open(os.path.abspath(SOURCES_PATH)) as f:
-        return json.load(f)['sources']
+class _HTMLStripper(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self._parts = []
+
+    def handle_data(self, data):
+        self._parts.append(data)
+
+    def get_text(self):
+        return ' '.join(self._parts).strip()
 
 
-def _parse_date(date_str: str) -> datetime | None:
-    """Try to parse a date string into an aware datetime."""
+def _strip_html(text: str) -> str:
+    if not text:
+        return ''
+    p = _HTMLStripper()
+    try:
+        p.feed(text)
+        return p.get_text()[:500]
+    except Exception:
+        return re.sub(r'<[^>]+>', '', text)[:500]
+
+
+def _parse_rss_date(date_str: str) -> datetime | None:
+    """Parse RFC 2822 dates from RSS feeds."""
     if not date_str:
         return None
-    date_str = date_str.strip()
     formats = [
-        '%b %d, %Y', '%B %d, %Y', '%Y-%m-%d',
-        '%d %b %Y', '%d %B %Y', '%b %d %Y',
-        '%m/%d/%Y', '%Y-%m-%dT%H:%M:%S',
-        '%Y-%m-%dT%H:%M:%SZ', '%Y-%m-%dT%H:%M:%S%z',
+        '%a, %d %b %Y %H:%M:%S %z',
+        '%a, %d %b %Y %H:%M:%S %Z',
+        '%a, %d %b %Y %H:%M:%S GMT',
     ]
     for fmt in formats:
         try:
-            dt = datetime.strptime(date_str, fmt)
+            dt = datetime.strptime(date_str.strip(), fmt)
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
             return dt
@@ -54,112 +77,83 @@ def _parse_date(date_str: str) -> datetime | None:
     return None
 
 
-def _scrape_source(source: dict) -> list[dict]:
-    """Generic scraper for a single source config."""
-    url = source['url']
-    sel = source['selectors']
+def _scrape_rss(source: dict) -> list[dict]:
+    """Fetch and parse an RSS feed into episode dicts."""
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=15)
+        resp = requests.get(source['rss'], headers=HEADERS, timeout=15)
         resp.raise_for_status()
     except Exception as e:
-        print(f"[WARN] Could not fetch {url}: {e}")
+        print(f"[WARN] Could not fetch {source['id']} RSS: {e}")
         return []
 
-    soup = BeautifulSoup(resp.text, 'html.parser')
-    containers = soup.select(sel['episode_container'])
-    if not containers:
-        # Try alternate Substack selectors
-        containers = soup.select('div[class*="post"]') or soup.select('article')
+    try:
+        root = ET.fromstring(resp.text)
+    except ET.ParseError as e:
+        print(f"[WARN] Could not parse {source['id']} RSS XML: {e}")
+        return []
+
+    channel = root.find('channel')
+    if channel is None:
+        return []
 
     episodes = []
-    for container in containers:
-        try:
-            title_el = container.select_one(sel['title']) or container.select_one('h2') or container.select_one('h3')
-            date_el = container.select_one(sel['date']) or container.select_one('time')
-            desc_el = container.select_one(sel['description']) or container.select_one('p')
-            link_el = container.select_one(sel['link']) or container.select_one('a')
-
-            if not title_el:
-                continue
-
-            title = title_el.get_text(strip=True)
-            if not title:
-                continue
-
-            # Date: prefer datetime attribute on <time>
-            date_str = ''
-            if date_el:
-                date_str = date_el.get('datetime') or date_el.get_text(strip=True)
-
-            description = desc_el.get_text(strip=True) if desc_el else ''
-
-            link = ''
-            if link_el:
-                href = link_el.get('href', '')
-                if href:
-                    link = href if href.startswith('http') else f"https://{url.split('/')[2]}{href}"
-
-            episodes.append({
-                'source': source['id'],
-                'title': title,
-                'url': link,
-                'published_date': date_str,
-                'description': description[:500],
-            })
-        except Exception as e:
-            print(f"[WARN] Error parsing episode from {source['id']}: {e}")
+    for item in channel.findall('item'):
+        title = item.findtext('title', '').strip()
+        if not title:
             continue
+        link = item.findtext('link', '').strip()
+        pub_date = item.findtext('pubDate', '').strip()
+        desc = _strip_html(item.findtext('description', '') or item.findtext('{http://www.itunes.com/dtds/podcast-1.0.dtd}summary', ''))
+
+        episodes.append({
+            'source': source['id'],
+            'title': title,
+            'url': link,
+            'published_date': pub_date,
+            'description': desc,
+        })
 
     return episodes
 
 
 def filter_new_episodes(episodes: list[dict], seen_urls: list[str], days: int = 7) -> list[dict]:
-    """Return episodes from last N days that haven't been seen before."""
+    """Return episodes from last N days not already seen."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     result = []
     for ep in episodes:
         if ep['url'] in seen_urls:
             continue
-        parsed = _parse_date(ep.get('published_date', ''))
-        # If we can't parse the date, include it (better to over-include)
+        parsed = _parse_rss_date(ep.get('published_date', ''))
         if parsed and parsed < cutoff:
             continue
         result.append(ep)
     return result
 
 
-def scrape_lenny() -> list[dict]:
-    sources = _load_sources()
-    for s in sources:
-        if s['id'] == 'lennys_podcast' and s.get('enabled'):
-            return _scrape_source(s)
-    return []
-
-
-def scrape_melissa() -> list[dict]:
-    sources = _load_sources()
-    for s in sources:
-        if s['id'] == 'product_thinking' and s.get('enabled'):
-            return _scrape_source(s)
-    return []
-
-
 def scrape_all() -> list[dict]:
-    """Scrape all enabled sources."""
-    sources = _load_sources()
     all_episodes = []
-    for s in sources:
-        if s.get('enabled'):
-            eps = _scrape_source(s)
-            all_episodes.extend(eps)
-            print(f"[INFO] {s['id']}: found {len(eps)} episodes")
+    for source in SOURCES:
+        if not source.get('enabled'):
+            continue
+        eps = _scrape_rss(source)
+        all_episodes.extend(eps)
+        print(f"[INFO] {source['id']}: found {len(eps)} episodes")
     return all_episodes
 
 
+def scrape_lenny() -> list[dict]:
+    return _scrape_rss(next(s for s in SOURCES if s['id'] == 'lennys_podcast'))
+
+
+def scrape_melissa() -> list[dict]:
+    return _scrape_rss(next(s for s in SOURCES if s['id'] == 'product_thinking'))
+
+
 if __name__ == '__main__':
-    print("Scraping all sources...\n")
+    print("Scraping all sources via RSS...\n")
     episodes = scrape_all()
-    print(f"\nTotal episodes found: {len(episodes)}")
-    for ep in episodes[:10]:
+    new = filter_new_episodes(episodes, [], days=7)
+    print(f"\nTotal: {len(episodes)} episodes — {len(new)} from last 7 days\n")
+    for ep in new:
         print(f"  [{ep['source']}] {ep['title'][:80]}")
         print(f"    Date: {ep['published_date']}  URL: {ep['url'][:70]}")

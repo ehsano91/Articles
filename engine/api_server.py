@@ -66,6 +66,31 @@ def _spawn_generation(topic: dict):
         state_module.save_state(cur_state)
 
 
+def _spawn_revision(existing_article: dict, feedback: str, topic: dict, episodes: list):
+    """Background thread: revise article based on user feedback."""
+    import claude_client
+    import writer
+    cur_state = state_module.load_state()
+    try:
+        cur_state['stage'] = 'generating'
+        state_module.save_state(cur_state)
+        article = claude_client.revise_article(existing_article, feedback, topic, episodes)
+        if not article:
+            raise RuntimeError("Revision returned None")
+        writer.validate_length(article)
+        cur_state = state_module.load_state()
+        cur_state['draft_article'] = article
+        cur_state['stage'] = 'awaiting_approval'
+        state_module.save_state(cur_state)
+        print("[INFO] Article revised — awaiting approval")
+    except Exception as e:
+        print(f"[ERROR] Revision failed: {e}")
+        cur_state = state_module.load_state()
+        cur_state['stage'] = 'awaiting_approval'
+        cur_state['last_error'] = str(e)
+        state_module.save_state(cur_state)
+
+
 def _spawn_publish():
     """Background thread: publish approved draft."""
     import publisher
@@ -168,6 +193,27 @@ class ArticlesHandler(BaseHTTPRequestHandler):
             t = threading.Thread(target=_spawn_publish, daemon=True)
             t.start()
             _json_response(self, {'status': 'publishing'})
+
+        elif path == '/regenerate':
+            s = state_module.load_state()
+            if s['stage'] != 'awaiting_approval':
+                return _error(self, f"Cannot regenerate in stage: {s['stage']}")
+            try:
+                data = json.loads(body) if body else {}
+                feedback = data.get('feedback', '').strip()
+                if not feedback:
+                    return _error(self, 'feedback is required')
+                topic = s.get('selected_topic', {})
+                episodes = s.get('scraped_episodes', [])
+                t = threading.Thread(
+                    target=_spawn_revision,
+                    args=(s.get('draft_article'), feedback, topic, episodes),
+                    daemon=True,
+                )
+                t.start()
+                _json_response(self, {'status': 'regenerating'})
+            except Exception as e:
+                _error(self, str(e))
 
         elif path == '/reject':
             s = state_module.load_state()
