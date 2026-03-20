@@ -1,0 +1,9 @@
+config/settings.json
+data/state.json
+data/published.json
+data/articles/
+launchd/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store

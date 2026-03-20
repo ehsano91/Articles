@@ -1,0 +1,30 @@
+{
+  "sources": [
+    {
+      "id": "lennys_podcast",
+      "url": "https://www.lennysnewsletter.com/podcast",
+      "type": "substack_web",
+      "enabled": true,
+      "selectors": {
+        "episode_container": "div.post-preview",
+        "title": ".post-preview-title",
+        "date": "time",
+        "description": ".post-preview-description",
+        "link": "a.post-preview-title"
+      }
+    },
+    {
+      "id": "product_thinking",
+      "url": "https://www.produxlabs.com/product-thinking",
+      "type": "web_scrape",
+      "enabled": true,
+      "selectors": {
+        "episode_container": "div.blog-item",
+        "title": ".blog-item-title",
+        "date": ".blog-item-date",
+        "description": ".blog-item-description",
+        "link": "a"
+      }
+    }
+  ]
+}

@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Product Article Pipeline</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #22263a;
+      --border: #2e3347;
+      --text: #e2e8f0;
+      --text-muted: #8892a4;
+      --accent: #6366f1;
+      --accent-hover: #4f52d4;
+      --green: #22c55e;
+      --red: #ef4444;
+      --yellow: #f59e0b;
+      --blue: #3b82f6;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
+    header .meta { font-size: 13px; color: var(--text-muted); }
+    .container { max-width: 900px; margin: 0 auto; padding: 32px 24px; }
+    .stage-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      margin-bottom: 28px;
+    }
+    .stage-badge::before {
+      content: '';
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .stage-idle        { background: #1f2937; color: var(--text-muted); }
+    .stage-scraping    { background: #1e3a5f; color: var(--blue); }
+    .stage-awaiting_selection { background: #2d1f63; color: #a78bfa; }
+    .stage-generating  { background: #1e3a5f; color: var(--blue); }
+    .stage-awaiting_approval  { background: #1a3323; color: var(--green); }
+    .stage-publishing  { background: #1e3a5f; color: var(--blue); }
+    .stage-error       { background: #3b1a1a; color: var(--red); }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    .panel h2 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: var(--text);
+    }
+    .banner {
+      background: #2d2006;
+      border: 1px solid #78350f;
+      border-radius: 10px;
+      padding: 16px 20px;
+      color: var(--yellow);
+      margin-bottom: 24px;
+      font-size: 14px;
+    }
+    .topic-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    .topic-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+    .topic-card p  { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; }
+    .topic-card .why {
+      font-size: 13px;
+      color: #a78bfa;
+      background: #1a1428;
+      border-radius: 6px;
+      padding: 8px 12px;
+      margin: 10px 0;
+    }
+    .topic-card .sources {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 18px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn:hover { opacity: 0.88; transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-green   { background: #166534; color: var(--green); border: 1px solid #16a34a; }
+    .btn-red     { background: #7f1d1d; color: var(--red); border: 1px solid #dc2626; }
+    .btn-primary:disabled,
+    .btn-green:disabled,
+    .btn-red:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    .article-preview .hook {
+      font-size: 15px;
+      color: var(--text-muted);
+      font-style: italic;
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .article-preview .section { margin-bottom: 20px; }
+    .article-preview .section h3 {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+    }
+    .article-preview .section p { font-size: 14px; color: var(--text-muted); }
+    .article-preview .takeaway {
+      background: var(--surface2);
+      border-left: 3px solid var(--green);
+      padding: 12px 16px;
+      border-radius: 0 8px 8px 0;
+      font-size: 14px;
+      margin-top: 16px;
+    }
+    .word-count {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+    .action-row {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* Published log */
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+    td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    td a { color: var(--accent); text-decoration: none; }
+    td a:hover { text-decoration: underline; }
+    .via-medium { color: var(--green); font-size: 12px; }
+    .via-local  { color: var(--text-muted); font-size: 12px; }
+    .empty-state {
+      text-align: center;
+      color: var(--text-muted);
+      padding: 40px;
+      font-size: 14px;
+    }
+    .spinner {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .error-box {
+      background: #2d0f0f;
+      border: 1px solid #7f1d1d;
+      border-radius: 8px;
+      padding: 12px 16px;
+      color: var(--red);
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Product Article Pipeline</h1>
+    <span class="meta" id="last-run">Last run: —</span>
+  </header>
+
+  <div class="container">
+    <div id="stage-badge" class="stage-badge stage-idle">Idle</div>
+    <div id="error-box" class="error-box hidden"></div>
+    <div id="no-episodes-banner" class="banner hidden">No new episodes this week — nothing to process yet.</div>
+
+    <!-- Topics panel -->
+    <div id="topics-panel" class="panel hidden">
+      <h2>Choose a Topic</h2>
+      <div id="topics-list"></div>
+    </div>
+
+    <!-- Generating panel -->
+    <div id="generating-panel" class="panel hidden">
+      <p><span class="spinner"></span> Generating article with Claude...</p>
+    </div>
+
+    <!-- Draft panel -->
+    <div id="draft-panel" class="panel hidden">
+      <h2>Draft Article</h2>
+      <div class="word-count" id="draft-word-count"></div>
+      <div id="draft-content" class="article-preview"></div>
+      <div class="action-row">
+        <button class="btn btn-green" onclick="approve()">Approve &amp; Publish</button>
+        <button class="btn btn-red" onclick="reject()">Reject — Pick Different Topic</button>
+      </div>
+    </div>
+
+    <!-- Published log -->
+    <div class="panel">
+      <h2>Published Articles</h2>
+      <div id="published-section">
+        <p class="empty-state">No articles published yet.</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let lastStage = null;
+
+    function stageName(s) {
+      return {
+        idle: 'Idle',
+        scraping: 'Scraping',
+        awaiting_selection: 'Choose a Topic',
+        generating: 'Generating',
+        awaiting_approval: 'Review Draft',
+        publishing: 'Publishing',
+      }[s] || s;
+    }
+
+    function stageClass(s) {
+      return 'stage-' + s.replace(/_/g, '_');
+    }
+
+    function render(status) {
+      const stage = status.stage || 'idle';
+
+      // Badge
+      const badge = document.getElementById('stage-badge');
+      badge.textContent = stageName(stage);
+      badge.className = 'stage-badge ' + stageClass(stage);
+
+      // Last run
+      if (status.last_run) {
+        const d = new Date(status.last_run);
+        document.getElementById('last-run').textContent = 'Last run: ' + d.toLocaleString();
+      }
+
+      // Error
+      const errBox = document.getElementById('error-box');
+      if (status.last_error) {
+        errBox.textContent = 'Error: ' + status.last_error;
+        errBox.classList.remove('hidden');
+      } else {
+        errBox.classList.add('hidden');
+      }
+
+      // No episodes banner
+      const banner = document.getElementById('no-episodes-banner');
+      if (status.no_new_episodes) {
+        banner.classList.remove('hidden');
+      } else {
+        banner.classList.add('hidden');
+      }
+
+      // Topic panel
+      const topicsPanel = document.getElementById('topics-panel');
+      if (stage === 'awaiting_selection') {
+        topicsPanel.classList.remove('hidden');
+        renderTopics(status.pending_topics || []);
+      } else {
+        topicsPanel.classList.add('hidden');
+      }
+
+      // Generating panel
+      const genPanel = document.getElementById('generating-panel');
+      genPanel.classList.toggle('hidden', stage !== 'generating');
+
+      // Draft panel
+      const draftPanel = document.getElementById('draft-panel');
+      if (stage === 'awaiting_approval' && status.draft_article) {
+        draftPanel.classList.remove('hidden');
+        renderDraft(status.draft_article);
+      } else {
+        draftPanel.classList.add('hidden');
+      }
+    }
+
+    function renderTopics(topics) {
+      const list = document.getElementById('topics-list');
+      if (!topics.length) {
+        list.innerHTML = '<p style="color:var(--text-muted)">No topics available.</p>';
+        return;
+      }
+      list.innerHTML = topics.map(t => `
+        <div class="topic-card">
+          <h3>${esc(t.title)}</h3>
+          <p><strong>Goal:</strong> ${esc(t.goal)}</p>
+          <div class="why">${esc(t.why)}</div>
+          <div class="sources">Sources: ${(t.source_episodes || []).map(esc).join(', ') || '—'}</div>
+          <div style="margin-top:14px">
+            <button class="btn btn-primary" onclick="selectTopic(${t.topic_id})">Select This Topic</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderDraft(article) {
+      const wc = document.getElementById('draft-word-count');
+      wc.textContent = `~${article.word_count || '?'} words`;
+
+      const sections = (article.sections || []).map(s => `
+        <div class="section">
+          <h3>${esc(s.heading)}</h3>
+          <p>${esc(s.body)}</p>
+        </div>
+      `).join('');
+
+      document.getElementById('draft-content').innerHTML = `
+        <div class="hook">${esc(article.hook || '')}</div>
+        ${sections}
+        ${article.takeaway ? `<div class="takeaway">${esc(article.takeaway)}</div>` : ''}
+      `;
+    }
+
+    async function selectTopic(topicId) {
+      await fetch('/select', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({topic_id: topicId}),
+      });
+    }
+
+    async function approve() {
+      const btn = event.target;
+      btn.disabled = true;
+      await fetch('/approve', {method: 'POST'});
+    }
+
+    async function reject() {
+      await fetch('/reject', {method: 'POST'});
+    }
+
+    async function loadPublished() {
+      try {
+        const r = await fetch('/published');
+        const articles = await r.json();
+        const el = document.getElementById('published-section');
+        if (!articles.length) {
+          el.innerHTML = '<p class="empty-state">No articles published yet.</p>';
+          return;
+        }
+        el.innerHTML = `
+          <table>
+            <thead>
+              <tr><th>Title</th><th>Date</th><th>Via</th><th>Link</th></tr>
+            </thead>
+            <tbody>
+              ${articles.slice().reverse().map(a => `
+                <tr>
+                  <td>${esc(a.title || '—')}</td>
+                  <td>${a.published_at ? new Date(a.published_at).toLocaleDateString() : '—'}</td>
+                  <td class="via-${a.published_via || 'local'}">${a.published_via || 'local'}</td>
+                  <td>${a.medium_url
+                    ? `<a href="${esc(a.medium_url)}" target="_blank">Medium</a>`
+                    : a.markdown_path ? '<span style="color:var(--text-muted)">Local only</span>' : '—'
+                  }</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      } catch (e) {
+        // Ignore
+      }
+    }
+
+    function esc(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    async function poll() {
+      try {
+        const r = await fetch('/status');
+        const status = await r.json();
+        render(status);
+        if (status.stage !== lastStage) {
+          lastStage = status.stage;
+          loadPublished();
+        }
+      } catch (e) {
+        // Server down — badge shows last known state
+      }
+    }
+
+    poll();
+    loadPublished();
+    setInterval(poll, 3000);
+  </script>
+</body>
+</html>
