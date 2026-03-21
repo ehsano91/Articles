@@ -25,9 +25,9 @@ def _load_settings() -> dict:
 
 
 def _get_client() -> anthropic.Anthropic:
-    api_key = os.environ.get('ANTHROPIC_API_KEY')
+    api_key = os.environ.get('ANTHROPIC_API_KEY') or _load_settings().get('anthropic_api_key', '')
     if not api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY environment variable not set")
+        raise RuntimeError("ANTHROPIC_API_KEY not set in environment or config/settings.json")
     return anthropic.Anthropic(api_key=api_key)
 
 
