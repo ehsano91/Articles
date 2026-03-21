@@ -165,7 +165,8 @@ def write_article(topic: dict, episodes: list[dict]) -> dict | None:
         "framework-driven without being academic, and always grounded in real-world practice. "
         "Use third person as the default. Only use first person ('I') when sharing a specific concrete example. "
         "Avoid buzzwords, filler phrases, and vague generalisations. Every sentence should earn its place. "
-        "Never use em dashes (—) or en dashes (–) anywhere in the article. Write out full sentences instead. "
+        "Never use any dashes in the article: no em dashes (—), no en dashes (–), and no hyphenated compound words (e.g. no-code, production-ready, well-scoped, one-page, forward-thinking). "
+        "Instead of hyphenating, either write the words separately or rephrase the sentence entirely. "
         "Always respond with valid JSON only — no markdown, no explanation outside the JSON."
     )
 
@@ -186,7 +187,7 @@ Requirements:
 - Third person default; first person only for a specific concrete example
 - Written for senior PMs, aspiring PMs, and founders equally
 - Style: Lenny's Newsletter meets Melissa Perri: clear, direct, framework-driven
-- Never use em dashes (—) or en dashes (–). Write out full sentences instead.
+- Never use any dashes: no em dashes (—), no en dashes (–), no hyphenated compound words like no-code, production-ready, well-scoped. Write words separately or rephrase instead.
 
 Return a JSON object with:
 - title: string — final article title (can refine from topic brief)
@@ -245,7 +246,7 @@ def revise_article(existing_article: dict, feedback: str, topic: dict, episodes:
         "framework-driven without being academic, and always grounded in real-world practice. "
         "Use third person as the default. Only use first person ('I') when sharing a specific concrete example. "
         "Avoid buzzwords, filler phrases, and vague generalisations. Every sentence should earn its place. "
-        "Never use em dashes (—) or en dashes (–). Write out full sentences instead. "
+        "Never use any dashes: no em dashes (—), no en dashes (–), and no hyphenated compound words (e.g. no-code, production-ready, well-scoped, one-page, forward-thinking). Write words separately or rephrase instead. "
         "Always respond with valid JSON only — no markdown, no explanation outside the JSON."
     )
 
@@ -259,7 +260,7 @@ CURRENT ARTICLE (JSON):
 
 Apply the feedback carefully. Keep what is working. Fix what the author flagged.
 Maintain the same JSON structure and all the same style rules as the original.
-Never use em dashes or en dashes. Write out full sentences instead.
+Never use any dashes: no em dashes (—), no en dashes (–), no hyphenated compound words. Write words separately or rephrase instead.
 
 Return the revised article as a JSON object with the same fields:
 title, hook, sections (array of heading+body), takeaway, word_count."""
