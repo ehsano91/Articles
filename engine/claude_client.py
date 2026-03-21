@@ -280,3 +280,42 @@ title, hook, sections (array of heading+body), takeaway, word_count."""
     except (json.JSONDecodeError, ValueError) as e:
         print(f"[FAIL] Could not parse revised article JSON: {e}\nRaw response: {raw[:500]}")
         return None
+
+
+def generate_tags(article: dict) -> list[str]:
+    """
+    Generate up to 5 relevant Medium topic tags for the article.
+    Picks from Medium's actual topic taxonomy for maximum discoverability.
+    """
+    settings = _load_settings()
+    model = settings.get('claude_model', 'claude-sonnet-4-6')
+
+    title = article.get('title', '')
+    hook = article.get('hook', '')[:300]
+    sections = ' '.join(s.get('heading', '') for s in article.get('sections', []))
+
+    prompt = f"""Pick the 5 most relevant Medium topic tags for this product management article.
+Choose only from these valid Medium topics (exact spelling matters):
+Product Management, Startup, Technology, Leadership, Artificial Intelligence, Software Development,
+Design, UX, Entrepreneurship, Business, Strategy, Innovation, Future Of Work, Productivity,
+Engineering, Agile, SaaS, No Code, Career, Management
+
+Article title: {title}
+Opening: {hook}
+Section headings: {sections}
+
+Return only a JSON array of exactly 5 strings. Example: ["Product Management", "Startup", "Technology", "Leadership", "Artificial Intelligence"]"""
+
+    try:
+        raw = _call_claude(
+            messages=[{"role": "user", "content": prompt}],
+            system="You select Medium topic tags. Respond with only a JSON array of 5 strings, no explanation.",
+            model=model,
+            max_tokens=100,
+        )
+        cleaned = _strip_code_fences(raw)
+        tags = json.loads(cleaned)
+        return [t for t in tags if isinstance(t, str)][:5]
+    except Exception as e:
+        print(f"[WARN] Could not generate tags: {e}")
+        return ["Product Management", "Technology", "Leadership", "Startup", "Artificial Intelligence"]

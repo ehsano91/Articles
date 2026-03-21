@@ -310,6 +310,11 @@
     .modal-takeaway { background: var(--surface2); border-left: 3px solid var(--green); padding: 12px 16px; border-radius: 0 8px 8px 0; font-size: 14px; margin-top: 16px; }
     .title-link { cursor: pointer; color: var(--text); text-decoration: none; }
     .title-link:hover { color: var(--accent); }
+    .tags-section { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border); }
+    .tags-section h3 { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
+    .tags-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .tag-pill { background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; padding: 4px 12px; font-size: 13px; color: var(--text); }
+    .copy-tags-btn { font-size: 12px; padding: 4px 12px; margin-left: 4px; }
   </style>
 </head>
 <body>
@@ -583,6 +588,19 @@
              <span>No cover image</span>
              <button class="btn btn-primary" style="font-size:12px;padding:6px 14px" onclick="findImage(${idx})">Find Image</button>
            </div>`;
+      const tags = article.tags || [];
+      const tagsHtml = `
+        <div class="tags-section">
+          <h3>Medium Topics</h3>
+          <div class="tags-row" id="tags-row-${idx}">
+            ${tags.length
+              ? tags.map(t => `<span class="tag-pill">${esc(t)}</span>`).join('')
+                + `<button class="btn btn-primary copy-tags-btn" onclick="copyTags(${idx})">Copy All</button>`
+              : `<button class="btn btn-primary" style="font-size:12px;padding:5px 12px" onclick="fetchTags(${idx})">Generate Tags</button>`
+            }
+          </div>
+        </div>`;
+
       document.getElementById('modal-content').innerHTML = `
         ${coverHtml}
         <div class="modal-title">${esc(article.title)}</div>
@@ -591,9 +609,44 @@
           ${sections}
           ${article.takeaway ? `<div class="modal-takeaway">${esc(article.takeaway)}</div>` : ''}
         </div>
+        ${tagsHtml}
       `;
       document.getElementById('article-modal').classList.remove('hidden');
       window._currentModalIdx = idx;
+    }
+
+    async function fetchTags(idx) {
+      const btn = event.target;
+      btn.disabled = true;
+      btn.textContent = 'Generating...';
+      try {
+        const r = await fetch('/generate-tags', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({id: idx}),
+        });
+        const data = await r.json();
+        if (data.tags) {
+          const row = document.getElementById(`tags-row-${idx}`);
+          row.innerHTML = data.tags.map(t => `<span class="tag-pill">${esc(t)}</span>`).join('')
+            + `<button class="btn btn-primary copy-tags-btn" onclick="copyTags(${idx}, ${JSON.stringify(data.tags)})">Copy All</button>`;
+        }
+      } catch(e) {
+        btn.textContent = 'Failed — try again';
+        btn.disabled = false;
+      }
+    }
+
+    function copyTags(idx, tagsOverride) {
+      const pills = tagsOverride
+        ? tagsOverride
+        : [...document.querySelectorAll(`#tags-row-${idx} .tag-pill`)].map(el => el.textContent);
+      navigator.clipboard.writeText(pills.join(', ')).then(() => {
+        const btn = event.target;
+        const orig = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = orig, 1500);
+      });
     }
 
     async function findImage(idx) {

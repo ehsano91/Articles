@@ -53,6 +53,13 @@ def _spawn_generation(topic: dict):
         if not article:
             raise RuntimeError("Article generation returned None")
         writer.validate_length(article)
+        # Generate tags
+        try:
+            tags = claude_client.generate_tags(article)
+            article['tags'] = tags
+            print(f"[INFO] Tags: {tags}")
+        except Exception as e:
+            print(f"[WARN] Tag generation failed: {e}")
         # Find cover image
         try:
             import image_finder
@@ -236,6 +243,29 @@ class ArticlesHandler(BaseHTTPRequestHandler):
                 )
                 t.start()
                 _json_response(self, {'status': 'regenerating'})
+            except Exception as e:
+                _error(self, str(e))
+
+        elif path == '/generate-tags':
+            try:
+                data = json.loads(body) if body else {}
+                idx = data.get('id')
+                records = state_module.load_published()
+                if idx is None or int(idx) >= len(records):
+                    return _error(self, 'Article not found')
+                import claude_client
+                article = records[int(idx)].get('article') or {}
+                tags = claude_client.generate_tags(article)
+                records[int(idx)]['article']['tags'] = tags
+                records[int(idx)]['tags'] = tags
+                import tempfile
+                path_ = os.path.abspath(state_module.PUBLISHED_PATH)
+                dir_ = os.path.dirname(path_)
+                with tempfile.NamedTemporaryFile('w', dir=dir_, delete=False, suffix='.tmp') as f:
+                    json.dump(records, f, indent=2, default=str)
+                    tmp = f.name
+                os.rename(tmp, path_)
+                _json_response(self, {'tags': tags})
             except Exception as e:
                 _error(self, str(e))
 
