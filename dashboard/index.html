@@ -224,6 +224,37 @@
       margin-bottom: 16px;
       color: var(--text);
     }
+    .cover-image {
+      width: 100%;
+      height: 220px;
+      object-fit: cover;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      display: block;
+    }
+    .cover-placeholder {
+      width: 100%;
+      height: 220px;
+      background: var(--surface2);
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+      color: var(--text-muted);
+      font-size: 13px;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .image-credit {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: -14px;
+      margin-bottom: 16px;
+      text-align: right;
+    }
+    .image-credit a { color: var(--text-muted); }
     .spinner {
       display: inline-block;
       width: 16px; height: 16px;
@@ -442,7 +473,16 @@
         </div>
       `).join('');
 
+      const img = article.cover_image;
+      const coverHtml = img && img.url
+        ? `<img class="cover-image" src="${esc(img.url)}" alt="${esc(img.alt || '')}">
+           <div class="image-credit">Photo by <a href="${esc(img.photographer_url)}" target="_blank">${esc(img.photographer)}</a> on <a href="${esc(img.unsplash_url)}" target="_blank">Unsplash</a></div>`
+        : img && img.missing_key
+          ? `<div class="cover-placeholder"><span>No Unsplash key configured</span><span style="font-size:11px">Suggested keywords: ${(img.keywords||[]).map(esc).join(', ')}</span></div>`
+          : `<div class="cover-placeholder"><span>Finding image...</span></div>`;
+
       document.getElementById('draft-content').innerHTML = `
+        ${coverHtml}
         <div class="article-title">${esc(article.title || '')}</div>
         <div class="hook">${esc(article.hook || '')}</div>
         ${sections}
@@ -529,7 +569,16 @@
         <h2>${esc(s.heading)}</h2>
         <p>${esc(s.body)}</p>
       `).join('');
+      const img = article.cover_image;
+      const coverHtml = img && img.url
+        ? `<img class="cover-image" src="${esc(img.url)}" alt="${esc(img.alt || '')}">
+           <div class="image-credit">Photo by <a href="${esc(img.photographer_url)}" target="_blank">${esc(img.photographer)}</a> on <a href="${esc(img.unsplash_url)}" target="_blank">Unsplash</a></div>`
+        : `<div class="cover-placeholder" id="img-placeholder-${idx}">
+             <span>No cover image</span>
+             <button class="btn btn-primary" style="font-size:12px;padding:6px 14px" onclick="findImage(${idx})">Find Image</button>
+           </div>`;
       document.getElementById('modal-content').innerHTML = `
+        ${coverHtml}
         <div class="modal-title">${esc(article.title)}</div>
         <div class="modal-body">
           <div class="modal-hook">${esc(article.hook || '')}</div>
@@ -538,6 +587,30 @@
         </div>
       `;
       document.getElementById('article-modal').classList.remove('hidden');
+      window._currentModalIdx = idx;
+    }
+
+    async function findImage(idx) {
+      const btn = event.target;
+      btn.disabled = true;
+      btn.textContent = 'Searching...';
+      try {
+        const r = await fetch('/find-image', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({id: idx}),
+        });
+        const img = await r.json();
+        if (img && img.url) {
+          // Reload the modal
+          await viewArticle(idx);
+        } else {
+          btn.textContent = 'No image found';
+        }
+      } catch(e) {
+        btn.textContent = 'Failed — try again';
+        btn.disabled = false;
+      }
     }
 
     function closeModal(e) {

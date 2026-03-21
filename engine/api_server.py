@@ -53,6 +53,14 @@ def _spawn_generation(topic: dict):
         if not article:
             raise RuntimeError("Article generation returned None")
         writer.validate_length(article)
+        # Find cover image
+        try:
+            import image_finder
+            image = image_finder.find_image(article)
+            if image:
+                article['cover_image'] = image
+        except Exception as e:
+            print(f"[WARN] Image search failed: {e}")
         cur_state = state_module.load_state()
         cur_state['draft_article'] = article
         cur_state['stage'] = 'awaiting_approval'
@@ -78,6 +86,9 @@ def _spawn_revision(existing_article: dict, feedback: str, topic: dict, episodes
         if not article:
             raise RuntimeError("Revision returned None")
         writer.validate_length(article)
+        # Preserve existing cover image or find new one
+        if not article.get('cover_image') and existing_article.get('cover_image'):
+            article['cover_image'] = existing_article['cover_image']
         cur_state = state_module.load_state()
         cur_state['draft_article'] = article
         cur_state['stage'] = 'awaiting_approval'
@@ -225,6 +236,33 @@ class ArticlesHandler(BaseHTTPRequestHandler):
                 )
                 t.start()
                 _json_response(self, {'status': 'regenerating'})
+            except Exception as e:
+                _error(self, str(e))
+
+        elif path == '/find-image':
+            # Retroactively find an image for a published article
+            try:
+                data = json.loads(body) if body else {}
+                idx = data.get('id')
+                records = state_module.load_published()
+                if idx is None or int(idx) >= len(records):
+                    return _error(self, 'Article not found')
+                import image_finder
+                record = records[int(idx)]
+                article = record.get('article') or {}
+                image = image_finder.find_image(article)
+                if not image:
+                    return _error(self, 'No image found')
+                records[int(idx)]['article']['cover_image'] = image
+                records[int(idx)]['cover_image'] = image
+                import tempfile
+                path_ = os.path.abspath(state_module.PUBLISHED_PATH)
+                dir_ = os.path.dirname(path_)
+                with tempfile.NamedTemporaryFile('w', dir=dir_, delete=False, suffix='.tmp') as f:
+                    json.dump(records, f, indent=2, default=str)
+                    tmp = f.name
+                os.rename(tmp, path_)
+                _json_response(self, image)
             except Exception as e:
                 _error(self, str(e))
 
