@@ -108,6 +108,7 @@ def _spawn_publish():
             'title': draft.get('title', ''),
             'topic': topic.get('title', '') if topic else '',
             'word_count': draft.get('word_count', 0),
+            'article': draft,
         }
         state_module.append_published(record)
         cur_state = state_module.load_state()
@@ -153,6 +154,18 @@ class ArticlesHandler(BaseHTTPRequestHandler):
             _json_response(self, s.get('draft_article') or {})
         elif path == '/published':
             _json_response(self, state_module.load_published())
+        elif path == '/article':
+            from urllib.parse import parse_qs
+            params = parse_qs(urlparse(self.path).query)
+            idx = params.get('id', [None])[0]
+            records = state_module.load_published()
+            if idx is None or not records:
+                return _error(self, 'Not found', 404)
+            try:
+                record = records[int(idx)]
+                _json_response(self, record.get('article') or {})
+            except (IndexError, ValueError):
+                _error(self, 'Not found', 404)
         else:
             _error(self, 'Not found', 404)
 
